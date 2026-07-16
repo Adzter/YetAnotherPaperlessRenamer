@@ -70,10 +70,20 @@ dry_run: false
 
 YAPR listens for HTTP POST requests from Paperless and processes each document as it arrives.
 
-**Configure in Paperless:**
-1. Go to Settings -> Workflows -> Add Workflow
-2. Trigger: Document Added
-3. Action: Webhook -> `http://<yapr-host>:8080/webhook`
+**Paperless workflow setup:**
+
+1. Settings -> Workflows -> Add Workflow
+2. Set a name (e.g. "YAPR")
+3. Under Triggers, add a trigger:
+   - Type: Document Added
+   - Leave all filters blank to match every document
+4. Under Actions, add an action:
+   - Type: Webhook
+   - URL: `http://<yapr-host>:8080/webhook`
+   - Send as JSON: enabled
+   - Include document: enabled
+   - Leave params and headers blank
+5. Save
 
 Set `mode: "webhook"` in config, then start YAPR. Documents are renamed as soon as Paperless finishes consuming them.
 
