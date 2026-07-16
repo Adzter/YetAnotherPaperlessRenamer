@@ -9,8 +9,8 @@ Supports Ollama (local) or Anthropic (cloud).
 ## Setup
 
 ```bash
-cp config.yaml my-config.yaml
-# edit with your Paperless URL, token, and LLM settings
+cp config.yaml.template config.yaml
+# edit config.yaml with your Paperless URL, token, and LLM settings
 ```
 
 **Docker:**
