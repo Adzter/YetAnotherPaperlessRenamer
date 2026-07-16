@@ -7,4 +7,4 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY rename_documents.py .
 
-CMD ["python", "rename_documents.py", "--daemon"]
+CMD ["python", "rename_documents.py"]
