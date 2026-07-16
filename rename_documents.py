@@ -210,7 +210,6 @@ def run_daemon(config: dict) -> None:
 def run_webhook(config: dict) -> None:
     from flask import Flask, jsonify, request
 
-    scanner_pattern = re.compile(config.get("scanner_pattern", r"^BRW\d+"))
     port = config.get("webhook", {}).get("port", 8080)
     app = Flask(__name__)
 
@@ -224,11 +223,7 @@ def run_webhook(config: dict) -> None:
             return jsonify({"status": "ignored", "reason": "no document id"}), 200
 
         title = payload.get("title", "")
-        if not scanner_pattern.match(title):
-            logging.info(f"Webhook: doc {doc_id} title {title!r} does not match pattern, skipping")
-            return jsonify({"status": "ignored", "reason": "title does not match scanner pattern"}), 200
-
-        logging.info(f"Webhook triggered for doc {doc_id}")
+        logging.info(f"Webhook triggered for doc {doc_id}: {title}")
         process_document(doc_id, title, config)
         return jsonify({"status": "ok"}), 200
 
