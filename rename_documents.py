@@ -215,16 +215,28 @@ def run_webhook(config: dict) -> None:
 
     @app.route("/webhook", methods=["POST"])
     def webhook():
+        # Try JSON body first, then form params
         payload = request.get_json(silent=True) or {}
-        doc_id = payload.get("id")
+        doc_id = (
+            payload.get("document_id")
+            or request.form.get("document_id")
+            or request.args.get("document_id")
+        )
 
         if not doc_id:
-            logging.warning(f"Webhook received with no document ID. Payload: {payload}")
-            return jsonify({"status": "ignored", "reason": "no document id"}), 200
+            logging.warning(f"Webhook received with no document_id. Payload: {payload} Form: {request.form}")
+            return jsonify({"status": "ignored", "reason": "no document_id"}), 200
 
-        title = payload.get("title", "")
-        logging.info(f"Webhook triggered for doc {doc_id}: {title}")
-        process_document(doc_id, title, config)
+        doc_id = int(doc_id)
+        logging.info(f"Webhook triggered for doc {doc_id}, fetching from Paperless")
+
+        try:
+            doc = get_document(doc_id, config)
+        except Exception as e:
+            logging.error(f"  Failed to fetch doc {doc_id} from Paperless: {e}")
+            return jsonify({"status": "error"}), 500
+
+        process_document(doc_id, doc.get("title", ""), config)
         return jsonify({"status": "ok"}), 200
 
     @app.route("/health", methods=["GET"])

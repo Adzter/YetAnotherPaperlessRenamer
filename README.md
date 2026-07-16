@@ -81,8 +81,8 @@ YAPR listens for HTTP POST requests from Paperless and processes each document a
    - Type: Webhook
    - URL: `http://<yapr-host>:8080/webhook`
    - Send as JSON: enabled
-   - Include document: enabled
-   - Leave params and headers blank
+   - Webhook params: add one param with key `document_id` and value `{{ document.pk }}`
+   - Leave headers blank
 5. Save
 
 Set `mode: "webhook"` in config, then start YAPR. Documents are renamed as soon as Paperless finishes consuming them.
