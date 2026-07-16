@@ -27,7 +27,6 @@ def load_config(path: str) -> dict:
     with open(path) as f:
         config = yaml.safe_load(f)
 
-    # Allow env var overrides for secrets
     if os.environ.get("PAPERLESS_TOKEN"):
         config["paperless"]["token"] = os.environ["PAPERLESS_TOKEN"]
     if os.environ.get("ANTHROPIC_API_KEY"):
@@ -73,7 +72,7 @@ def get_pending_documents(config: dict) -> list[dict]:
     return docs
 
 
-def get_document_content(doc_id: int, config: dict) -> str:
+def get_document(doc_id: int, config: dict) -> dict:
     base_url = config["paperless"]["url"].rstrip("/")
     resp = httpx.get(
         f"{base_url}/api/documents/{doc_id}/",
@@ -81,7 +80,11 @@ def get_document_content(doc_id: int, config: dict) -> str:
         timeout=30,
     )
     resp.raise_for_status()
-    content = resp.json().get("content", "")
+    return resp.json()
+
+
+def get_document_content(doc_id: int, config: dict) -> str:
+    content = get_document(doc_id, config).get("content", "")
     max_chars = config.get("llm", {}).get("max_content_chars", 3000)
     return content[:max_chars]
 
@@ -151,10 +154,39 @@ def is_valid_title(title: Optional[str], scanner_pattern: str) -> bool:
     return True
 
 
-def process_documents(config: dict) -> None:
+def process_document(doc_id: int, doc_title: str, config: dict) -> None:
     dry_run = config.get("dry_run", False)
     scanner_pattern = config.get("scanner_pattern", r"^BRW\d+")
 
+    logging.info(f"Processing doc {doc_id}: {doc_title}")
+
+    try:
+        content = get_document_content(doc_id, config)
+    except Exception as e:
+        logging.error(f"  Failed to get content for doc {doc_id}: {e}")
+        return
+
+    if not content.strip():
+        logging.warning(f"  Doc {doc_id} has no OCR content, skipping")
+        return
+
+    title = infer_title(content, config)
+
+    if not is_valid_title(title, scanner_pattern):
+        logging.warning(f"  Doc {doc_id}: LLM returned unusable title {title!r}, skipping")
+        return
+
+    if dry_run:
+        logging.info(f"  [DRY RUN] Would rename to: {title}")
+    else:
+        try:
+            update_document_title(doc_id, title, config)
+            logging.info(f"  Renamed to: {title}")
+        except Exception as e:
+            logging.error(f"  Failed to update doc {doc_id}: {e}")
+
+
+def process_all_pending(config: dict) -> None:
     try:
         docs = get_pending_documents(config)
     except Exception as e:
@@ -162,36 +194,50 @@ def process_documents(config: dict) -> None:
         return
 
     for doc in docs:
-        doc_id = doc["id"]
-        original_title = doc["title"]
-        logging.info(f"Processing doc {doc_id}: {original_title}")
-
-        try:
-            content = get_document_content(doc_id, config)
-        except Exception as e:
-            logging.error(f"  Failed to get content for doc {doc_id}: {e}")
-            continue
-
-        if not content.strip():
-            logging.warning(f"  Doc {doc_id} has no OCR content, skipping")
-            continue
-
-        title = infer_title(content, config)
-
-        if not is_valid_title(title, scanner_pattern):
-            logging.warning(f"  Doc {doc_id}: LLM returned unusable title {title!r}, skipping")
-            continue
-
-        if dry_run:
-            logging.info(f"  [DRY RUN] Would rename to: {title}")
-        else:
-            try:
-                update_document_title(doc_id, title, config)
-                logging.info(f"  Renamed to: {title}")
-            except Exception as e:
-                logging.error(f"  Failed to update doc {doc_id}: {e}")
-
+        process_document(doc["id"], doc["title"], config)
         time.sleep(0.5)
+
+
+def run_daemon(config: dict) -> None:
+    interval = config.get("scheduling", {}).get("interval_minutes", 30) * 60
+    logging.info(f"Running in daemon mode, interval {interval // 60} minutes")
+    while True:
+        process_all_pending(config)
+        logging.info(f"Sleeping {interval // 60} minutes until next run")
+        time.sleep(interval)
+
+
+def run_webhook(config: dict) -> None:
+    from flask import Flask, jsonify, request
+
+    scanner_pattern = re.compile(config.get("scanner_pattern", r"^BRW\d+"))
+    port = config.get("webhook", {}).get("port", 8080)
+    app = Flask(__name__)
+
+    @app.route("/webhook", methods=["POST"])
+    def webhook():
+        payload = request.get_json(silent=True) or {}
+        doc_id = payload.get("id")
+
+        if not doc_id:
+            logging.warning(f"Webhook received with no document ID. Payload: {payload}")
+            return jsonify({"status": "ignored", "reason": "no document id"}), 200
+
+        title = payload.get("title", "")
+        if not scanner_pattern.match(title):
+            logging.info(f"Webhook: doc {doc_id} title {title!r} does not match pattern, skipping")
+            return jsonify({"status": "ignored", "reason": "title does not match scanner pattern"}), 200
+
+        logging.info(f"Webhook triggered for doc {doc_id}")
+        process_document(doc_id, title, config)
+        return jsonify({"status": "ok"}), 200
+
+    @app.route("/health", methods=["GET"])
+    def health():
+        return jsonify({"status": "ok"}), 200
+
+    logging.info(f"Webhook server listening on port {port}")
+    app.run(host="0.0.0.0", port=port)
 
 
 def main() -> None:
@@ -199,8 +245,9 @@ def main() -> None:
     parser.add_argument("--config", default="config.yaml", help="Path to config file")
     parser.add_argument("--dry-run", action="store_true", help="Preview titles without applying changes")
     mode = parser.add_mutually_exclusive_group()
-    mode.add_argument("--once", action="store_true", default=True, help="Run one pass and exit (default)")
-    mode.add_argument("--daemon", action="store_true", help="Loop continuously on a schedule")
+    mode.add_argument("--once", action="store_true", help="Run one pass and exit")
+    mode.add_argument("--daemon", action="store_true", help="Poll on a schedule")
+    mode.add_argument("--webhook", action="store_true", help="Listen for Paperless webhooks")
     args = parser.parse_args()
 
     config = load_config(args.config)
@@ -209,15 +256,13 @@ def main() -> None:
 
     setup_logging(config)
 
-    if args.daemon:
-        interval = config.get("scheduling", {}).get("interval_minutes", 30) * 60
-        logging.info(f"Running in daemon mode, interval {interval // 60} minutes")
-        while True:
-            process_documents(config)
-            logging.info(f"Sleeping {interval // 60} minutes until next run")
-            time.sleep(interval)
+    # CLI flags take priority, then fall back to config mode
+    if args.daemon or (not args.once and not args.webhook and config.get("mode") == "daemon"):
+        run_daemon(config)
+    elif args.webhook or (not args.once and not args.daemon and config.get("mode") == "webhook"):
+        run_webhook(config)
     else:
-        process_documents(config)
+        process_all_pending(config)
 
 
 if __name__ == "__main__":

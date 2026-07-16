@@ -4,12 +4,20 @@ paperless:
 
 scanner_pattern: "^BRW\\d+"  # regex matching scanner default filenames
 
+mode: "webhook"  # "once", "daemon", or "webhook"
+
+webhook:
+  port: 8080  # used in webhook mode only
+
+scheduling:
+  interval_minutes: 30  # used in daemon mode only
+
 llm:
   provider: "ollama"  # "ollama" or "anthropic"
 
   ollama:
     url: "http://ollama-host:11434"
-    model: "mistral:7b"
+    model: "mistral:7b"  # recommended, pull with: ollama pull mistral:7b
 
   anthropic:
     api_key: ""  # or set ANTHROPIC_API_KEY env var
@@ -17,11 +25,8 @@ llm:
 
   max_content_chars: 3000  # first ~1 page of OCR text
 
-scheduling:
-  interval_minutes: 30  # used in daemon mode only
-
 logging:
   level: "INFO"
   file: ""  # leave empty to log to stdout only
 
-dry_run: false  # true = preview without applying changes
+dry_run: false
