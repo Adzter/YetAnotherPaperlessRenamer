@@ -72,7 +72,7 @@ def get_pending_documents(config: dict) -> list[dict]:
     return docs
 
 
-def get_document(doc_id: int, config: dict) -> dict:
+def get_document_content(doc_id: int, config: dict) -> str:
     base_url = config["paperless"]["url"].rstrip("/")
     resp = httpx.get(
         f"{base_url}/api/documents/{doc_id}/",
@@ -80,11 +80,7 @@ def get_document(doc_id: int, config: dict) -> dict:
         timeout=30,
     )
     resp.raise_for_status()
-    return resp.json()
-
-
-def get_document_content(doc_id: int, config: dict) -> str:
-    content = get_document(doc_id, config).get("content", "")
+    content = resp.json().get("content", "")
     max_chars = config.get("llm", {}).get("max_content_chars", 3000)
     return content[:max_chars]
 
@@ -198,55 +194,6 @@ def process_all_pending(config: dict) -> None:
         time.sleep(0.5)
 
 
-def run_daemon(config: dict) -> None:
-    interval = config.get("scheduling", {}).get("interval_minutes", 30) * 60
-    logging.info(f"Running in daemon mode, interval {interval // 60} minutes")
-    while True:
-        process_all_pending(config)
-        logging.info(f"Sleeping {interval // 60} minutes until next run")
-        time.sleep(interval)
-
-
-def run_webhook(config: dict) -> None:
-    from flask import Flask, jsonify, request
-
-    port = config.get("webhook", {}).get("port", 8080)
-    app = Flask(__name__)
-
-    @app.route("/webhook", methods=["POST"])
-    def webhook():
-        # Try JSON body first, then form params
-        payload = request.get_json(silent=True) or {}
-        doc_id = (
-            payload.get("document_id")
-            or request.form.get("document_id")
-            or request.args.get("document_id")
-        )
-
-        if not doc_id:
-            logging.warning(f"Webhook received with no document_id. Payload: {payload} Form: {request.form}")
-            return jsonify({"status": "ignored", "reason": "no document_id"}), 200
-
-        doc_id = int(doc_id)
-        logging.info(f"Webhook triggered for doc {doc_id}, fetching from Paperless")
-
-        try:
-            doc = get_document(doc_id, config)
-        except Exception as e:
-            logging.error(f"  Failed to fetch doc {doc_id} from Paperless: {e}")
-            return jsonify({"status": "error"}), 500
-
-        process_document(doc_id, doc.get("title", ""), config)
-        return jsonify({"status": "ok"}), 200
-
-    @app.route("/health", methods=["GET"])
-    def health():
-        return jsonify({"status": "ok"}), 200
-
-    logging.info(f"Webhook server listening on port {port}")
-    app.run(host="0.0.0.0", port=port)
-
-
 def main() -> None:
     parser = argparse.ArgumentParser(description="Rename Paperless-NGX scanner documents using LLM title inference")
     parser.add_argument("--config", default="config.yaml", help="Path to config file")
@@ -254,7 +201,6 @@ def main() -> None:
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--once", action="store_true", help="Run one pass and exit")
     mode.add_argument("--daemon", action="store_true", help="Poll on a schedule")
-    mode.add_argument("--webhook", action="store_true", help="Listen for Paperless webhooks")
     args = parser.parse_args()
 
     config = load_config(args.config)
@@ -263,11 +209,13 @@ def main() -> None:
 
     setup_logging(config)
 
-    # CLI flags take priority, then fall back to config mode
-    if args.daemon or (not args.once and not args.webhook and config.get("mode") == "daemon"):
-        run_daemon(config)
-    elif args.webhook or (not args.once and not args.daemon and config.get("mode") == "webhook"):
-        run_webhook(config)
+    if args.daemon or config.get("mode") == "daemon":
+        interval = config.get("scheduling", {}).get("interval_minutes", 30) * 60
+        logging.info(f"Running in daemon mode, interval {interval // 60} minutes")
+        while True:
+            process_all_pending(config)
+            logging.info(f"Sleeping {interval // 60} minutes until next run")
+            time.sleep(interval)
     else:
         process_all_pending(config)
 
