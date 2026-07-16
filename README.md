@@ -41,7 +41,7 @@ llm:
 
   ollama:
     url: "http://ollama-host:11434"
-    model: "mistral:7b"
+    model: "mistral:7b"             # recommended, pull with: ollama pull mistral:7b
 
   anthropic:
     api_key: ""                 # or set ANTHROPIC_API_KEY env var
