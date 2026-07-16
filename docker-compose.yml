@@ -1,0 +1,13 @@
+version: "3.8"
+
+services:
+  paperless-rename:
+    build: .
+    container_name: paperless-rename
+    restart: unless-stopped
+    volumes:
+      - /path/to/config.yaml:/app/config.yaml:ro
+    environment:
+      - TZ=Europe/London
+      - PAPERLESS_TOKEN=${PAPERLESS_TOKEN:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
