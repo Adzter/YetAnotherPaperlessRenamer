@@ -15,13 +15,13 @@ Format: [Organization] [Document Type] [Year only if annual]
 Examples: HSBC Mortgage Statement 2024, HMRC Tax Return 2023-24, Vodafone Invoice, City Dental Receipt
 
 Rules:
-- Return ONLY the title — plain words, spaces, and hyphens only; no other punctuation (no commas, periods, colons, brackets, exclamation marks, quotes)
+- Return ONLY the title, no explanation, no quotes, no punctuation at the end
 - Maximum 60 characters
+- The organisation name is the primary business name shown at the top of the document; ignore names found in email addresses, URLs, or postal addresses
+- Omit branch locations from the organisation name
+- Use brief document type labels: Receipt not "Receipt of Payment", Invoice not "Tax Invoice"
+- Only include the year for explicitly annual documents like yearly statements or tax returns; omit it for receipts, invoices, and letters
 - NEVER include the recipient's name
-- NEVER include a date, month, or year for one-off documents such as receipts, invoices, or letters
-- Only append the year for documents that are explicitly annual, such as yearly statements or tax returns
-- Use the shortest document type label: Receipt not "Receipt of Payment", Invoice not "Tax Invoice"
-- Omit branch locations and addresses from organisation names
 - If you cannot determine enough detail, return: UNKNOWN
 
 OCR text:
