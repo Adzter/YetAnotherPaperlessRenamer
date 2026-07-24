@@ -11,14 +11,15 @@ import yaml
 
 PROMPT_TEMPLATE = """You are a document title extractor. Given OCR text from a scanned document, produce a concise descriptive title.
 
-Format: [Organization] [Document Type], with [Year/Period] only when it meaningfully disambiguates (e.g. annual statements, tax returns).
+Format: [Organization] [Document Type] [Year only if annual]
 Examples: HSBC Mortgage Statement 2024, HMRC Tax Return 2023-24, Vodafone Invoice, City Dental Receipt
 
 Rules:
-- Return ONLY the title — no explanation, no quotes, no punctuation at the end
+- Return ONLY the title — plain words, spaces, and hyphens only; no other punctuation (no commas, periods, colons, brackets, exclamation marks, quotes)
 - Maximum 60 characters
 - NEVER include the recipient's name
-- NEVER include dates, months, or years for one-off documents (receipts, invoices, letters); only include the year for annual documents like yearly statements or tax returns
+- NEVER include a date, month, or year for one-off documents such as receipts, invoices, or letters
+- Only append the year for documents that are explicitly annual, such as yearly statements or tax returns
 - Use the shortest document type label: Receipt not "Receipt of Payment", Invoice not "Tax Invoice"
 - Omit branch locations and addresses from organisation names
 - If you cannot determine enough detail, return: UNKNOWN
